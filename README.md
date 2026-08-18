@@ -1,10 +1,10 @@
 # Jordi Wild Avatar
 
-A conversational AI avatar of **Jordi Wild**, host of *The Wild Project* podcast, built entirely from his public podcast transcripts. The system extracts ~18 000 real Jordi speech turns from 381 YouTube subtitle files, indexes them with TF-IDF for Retrieval-Augmented Generation (RAG), and uses Claude Sonnet to generate responses grounded in his actual vocabulary, humor style, and conversation patterns. Available in four interaction modes: text chatbot, low-latency voice call (Microsoft Azure neural TTS), high-quality voice call with voice cloning (XTTS v2), and animated video call with real-time dlib face animation driven by audio amplitude.
+A conversational AI avatar of **Jordi Wild**, host of *The Wild Project* podcast, built entirely from his public podcast transcripts. The system extracts ~18 000 real Jordi speech turns from 381 YouTube subtitle files, indexes them with TF-IDF for Retrieval-Augmented Generation (RAG), and uses Amazon Nova (AWS Bedrock) to generate responses grounded in his actual vocabulary, humor style, and conversation patterns. Available in four interaction modes: text chatbot, low-latency voice call (Microsoft Azure neural TTS), high-quality voice call with voice cloning (XTTS v2), and animated video call with real-time dlib face animation driven by audio amplitude.
 
-**Main technologies:** Python · Anthropic API (Claude Sonnet) · RAG via scikit-learn TF-IDF · faster-whisper (speech-to-text) · XTTS v2 / edge-tts (voice cloning & TTS) · dlib + OpenCV (face animation) · yt-dlp
+**Main technologies:** Python · AWS Bedrock (Amazon Nova) · RAG via scikit-learn TF-IDF · faster-whisper (speech-to-text) · XTTS v2 / edge-tts (voice cloning & TTS) · dlib + OpenCV (face animation) · yt-dlp
 
-**Monthly cost:** Minimal. One-time setup cost is ~$0.10 (a single Claude API call to extract the style profile). Ongoing cost is ~$0.01 per conversation turn (one Claude Sonnet call at ~2 000 input + 300 output tokens). For casual use (a few dozen conversations per month) expect **under $1/month**. Speech recognition (faster-whisper) and face animation run fully locally at no cost.
+**Monthly cost:** Minimal. One-time setup cost is a single Nova call to extract the style profile. Ongoing cost is a fraction of a cent per conversation turn (one Nova Lite call at ~2 000 input + 300 output tokens). For casual use (a few dozen conversations per month) expect **under $1/month**. Speech recognition (faster-whisper) and face animation run fully locally at no cost.
 
 ---
 
@@ -25,8 +25,9 @@ A conversational AI avatar of **Jordi Wild**, host of *The Wild Project* podcast
 ## Quick Start
 
 ```bash
-# Set your Anthropic API key
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
+# Configure AWS credentials with bedrock:InvokeModel (skip if running on an EC2 instance
+# with an IAM role that already grants it)
+aws configure
 
 # Launch the avatar (interactive mode selector)
 python3 jordi.py
@@ -76,7 +77,7 @@ flowchart TD
 
     subgraph EXTRACT["Step 3 — Knowledge Extraction"]
         D1["06_build_knowledge_base.py\nHeuristic diarization"]
-        D2["03_extract_style.py\nClaude API — one-time"]
+        D2["03_extract_style.py\nAmazon Nova (Bedrock) — one-time"]
         D3["jordi_lines.txt\n~18 000 Jordi turns"]
         D4["jordi_style_profile.json\nvocabulary · reactions · patterns"]
         D5["knowledge_base.pkl\nTF-IDF RAG index\n18 066 entries"]
@@ -96,7 +97,7 @@ flowchart TD
         F3["videocall\njordi_avatar_voice.py\n+ face_animator.py"]
 
         G1["RAG Retrieval\nTF-IDF cosine similarity\ntop-6 relevant Jordi quotes"]
-        G2["Claude claude-sonnet-4-6\nLLM response generation"]
+        G2["Amazon Nova (Bedrock)\nLLM response generation"]
 
         H1["Text output"]
         H2["edge-tts\nOnline Spanish TTS"]
@@ -151,7 +152,7 @@ Two parallel processes:
 
 - **Heuristic diarization** (`06_build_knowledge_base.py`): Extracts Jordi's turns from transcripts using rule-based matching — questions ending in `?`, short reactions (`ajá`, `guau`, `claro`…), and known interviewer openers. Processes all 381 transcripts in seconds, zero API calls. Produces ~18,050 Jordi lines which are indexed into a TF-IDF knowledge base for RAG retrieval.
 
-- **Style profile** (`03_extract_style.py`): A one-time Claude API call on a sample of episodes produces `jordi_style_profile.json` — vocabulary, reaction patterns, challenge strategies, humor style, sample questions. This is the only step that requires the Claude API for data processing.
+- **Style profile** (`03_extract_style.py`): A one-time Amazon Nova (Bedrock) call on a sample of episodes produces `jordi_style_profile.json` — vocabulary, reaction patterns, challenge strategies, humor style, sample questions. This is the only step that requires an LLM call for data processing.
 
 #### Step 4 — Voice & Image Assets
 - `04_extract_voice_sample.py`: Downloads audio from one episode, skips the intro, and extracts 45 seconds of clean Jordi speech for voice cloning.
@@ -161,7 +162,7 @@ Two parallel processes:
 Every conversation turn follows this sequence:
 1. **User input**: keyboard text or microphone (recorded via `sounddevice`, transcribed by `faster-whisper`)
 2. **RAG retrieval**: the user's message is vectorized and compared against the knowledge base; the top-6 most similar real Jordi quotes are retrieved
-3. **LLM generation**: Claude receives the style profile, retrieved quotes, conversation history, and content safety policy; generates a response grounded in Jordi's real speech
+3. **LLM generation**: Nova receives the style profile, retrieved quotes, conversation history, and content safety policy; generates a response grounded in Jordi's real speech
 4. **Output**: text, speech synthesis (edge-tts or XTTS v2), or animated face driven by audio amplitude
 
 ---
@@ -184,9 +185,9 @@ Every conversation turn follows this sequence:
 
 | Library | Role |
 |---------|------|
-| **anthropic** (Anthropic SDK) | Client for Claude claude-sonnet-4-6 API |
+| **boto3** (bedrock_client.py, Anthropic-SDK-compatible shim) | Client for Amazon Nova via AWS Bedrock |
 
-**Usage in this project:** Final response generation only. Claude receives a system prompt containing Jordi's style profile, retrieved real quotes (RAG context), and a content safety policy, then generates a response that mimics Jordi's conversational style while staying grounded in verified content.
+**Usage in this project:** Final response generation only. Nova receives a system prompt containing Jordi's style profile, retrieved real quotes (RAG context), and a content safety policy, then generates a response that mimics Jordi's conversational style while staying grounded in verified content.
 
 ### Retrieval-Augmented Generation (RAG)
 
@@ -198,7 +199,7 @@ Every conversation turn follows this sequence:
 | **scikit-learn** `cosine_similarity` | Ranks retrieved quotes by relevance to the user's message |
 | **pickle** | Serializes the TF-IDF matrix for fast loading |
 
-**Usage in this project:** Before each Claude call, the user's message is vectorized with TF-IDF and the top-6 most semantically similar real Jordi quotes are injected into the context window. This means Jordi's answers are anchored to things he has actually said, not generic LLM output.
+**Usage in this project:** Before each Nova call, the user's message is vectorized with TF-IDF and the top-6 most semantically similar real Jordi quotes are injected into the context window. This means Jordi's answers are anchored to things he has actually said, not generic LLM output.
 
 ### Speech-to-Text (STT)
 
@@ -209,7 +210,7 @@ Every conversation turn follows this sequence:
 | **faster-whisper** | Transcribes microphone input to Spanish text |
 | **sounddevice** | Captures audio from microphone at 16 kHz |
 
-**Usage in this project:** In `callLQ`, `callHQ`, and `videocall` modes, holding `SPACE` records microphone audio which is saved to a temporary WAV and transcribed by Whisper before being sent to Claude.
+**Usage in this project:** In `callLQ`, `callHQ`, and `videocall` modes, holding `SPACE` records microphone audio which is saved to a temporary WAV and transcribed by Whisper before being sent to Nova.
 
 ### Text-to-Speech (TTS) & Voice Cloning
 
@@ -321,18 +322,18 @@ Every conversation turn follows this sequence:
 
 ---
 
-### 5. Claude claude-sonnet-4-6 (LLM)
+### 5. Amazon Nova (LLM)
 
 | Property | Value |
 |----------|-------|
 | **Task** | Conversational response generation |
-| **Provider** | Anthropic API |
+| **Provider** | AWS Bedrock (`eu.amazon.nova-lite-v1:0`) |
 | **Context** | System prompt (style profile + RAG quotes + safety policy) + conversation history |
 | **max_tokens** | 200–400 (short, conversational responses) |
-| **Temperature** | Default (not set — Anthropic default ~1.0) |
+| **Temperature** | Default (not set) |
 | **Language** | Spanish |
 
-**Why chosen:** Best available model for nuanced Spanish conversational generation. The style profile and RAG context are both injected into the system prompt so the model generates responses that are both stylistically consistent and factually grounded. API calls are limited strictly to response generation — all data processing uses heuristics and local models.
+**Why chosen:** Strong, low-cost model for nuanced Spanish conversational generation, billed through AWS rather than a separate Anthropic Console balance. The style profile and RAG context are both injected into the system prompt so the model generates responses that are both stylistically consistent and factually grounded. API calls are limited strictly to response generation — all data processing uses heuristics and local models.
 
 **Content safety policy (injected in system prompt):** The avatar is configured to give sincere, direct opinions on sensitive topics (religion, politics, migration, gender) while never attacking individuals or groups based on identity — consistent with how Jordi handles these topics publicly. The system is designed for open publication.
 
@@ -343,11 +344,11 @@ Every conversation turn follows this sequence:
 ```
 Wild_project/
 ├── jordi.py                      # Main launcher (mode selector)
-├── .env                          # API key (not committed)
+├── bedrock_client.py              # Anthropic-SDK-compatible shim → Amazon Nova via AWS Bedrock
 │
 ├── 01_download_subtitles.sh      # yt-dlp: download .vtt files
 ├── 02_parse_transcripts.py       # VTT → clean .txt
-├── 03_extract_style.py           # Claude API: build style profile (one-time)
+├── 03_extract_style.py           # Bedrock: build style profile (one-time)
 ├── 04_extract_voice_sample.py    # Extract 45s Jordi voice sample
 ├── 06_build_knowledge_base.py    # Heuristic diarization + TF-IDF index
 ├── 07_cartoon_avatar.py          # Photo → cartoon PNG
@@ -389,18 +390,19 @@ cd Wild_project
 sudo apt-get install -y portaudio19-dev libportaudio2 ffmpeg
 
 # 3. Install Python packages
-pip install yt-dlp webvtt-py anthropic faster-whisper edge-tts \
+pip install yt-dlp webvtt-py boto3 faster-whisper edge-tts \
             coqui-tts sounddevice pygame numpy scipy scikit-learn \
             opencv-python dlib python-dotenv
 
-# 4. Set API key
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
+# 4. Configure AWS credentials with bedrock:InvokeModel (skip if running on an EC2 instance
+#    with an IAM role that already grants it)
+aws configure
 
 # 5. Run the full data pipeline (one-time, ~5 min)
 ./01_download_subtitles.sh          # ~10 min, downloads 383 subtitle files
 python3 02_parse_transcripts.py     # ~1 min, cleans all transcripts
 python3 06_build_knowledge_base.py  # ~5 s, builds RAG index
-python3 03_extract_style.py         # ~2 min, Claude API (one-time cost ~$0.10)
+python3 03_extract_style.py         # ~2 min, Amazon Nova via Bedrock (negligible one-time cost)
 
 # Optional: voice cloning and cartoon avatar
 python3 04_extract_voice_sample.py  # for callHQ mode
@@ -420,7 +422,7 @@ python3 jordi.py
 | CPU | 4 cores | 8 cores |
 | GPU | Not required | NVIDIA GPU (for callHQ / real-time face video) |
 | Disk | 3 GB (models + data) | 5 GB |
-| Internet | Required for `chatbot`/`callLQ` (Claude + edge-tts) | — |
+| Internet | Required for `chatbot`/`callLQ` (Bedrock + edge-tts) | — |
 
 The project was built and tested on an AMD Ryzen with integrated Radeon Vega GPU (no CUDA). All ML inference runs on CPU.
 
@@ -432,12 +434,12 @@ This section provides a structured checklist for review by an IT expert and an A
 
 ### Audit Items
 
-- **Cost & resource minimization** — Under $1/month for casual use (~a few dozen conversations). One-time setup cost is ~$0.10 (single Claude API call for style extraction). Speech recognition (faster-whisper), face animation (dlib), and the TF-IDF knowledge base run locally at $0.
-- **IT architecture** — Clean two-part structure: offline data pipeline (5 numbered scripts) and runtime (`jordi.py` + `avatar/`). The four interaction modes share the same RAG + Claude generation core, with only the I/O layer differing. The offline pipeline produces reusable artifacts (pickled TF-IDF index, style profile JSON, voice sample WAV) that eliminate redundant processing at runtime.
+- **Cost & resource minimization** — Under $1/month for casual use (~a few dozen conversations). One-time setup cost is a single Nova call for style extraction. Speech recognition (faster-whisper), face animation (dlib), and the TF-IDF knowledge base run locally at $0.
+- **IT architecture** — Clean two-part structure: offline data pipeline (5 numbered scripts) and runtime (`jordi.py` + `avatar/`). The four interaction modes share the same RAG + Nova generation core, with only the I/O layer differing. The offline pipeline produces reusable artifacts (pickled TF-IDF index, style profile JSON, voice sample WAV) that eliminate redundant processing at runtime.
 - **Code efficiency** — TF-IDF knowledge base is pre-built and pickled, enabling fast cold-start. `faster-whisper` tiny/int8 quantization is the right tradeoff for real-time STT on CPU (~2s latency for a 5s utterance). XTTS v2 is slow on CPU (20–30s per response) — documented as a known limitation requiring GPU for `callHQ` mode.
-- **Cybersecurity** — `ANTHROPIC_API_KEY` is stored in `.env` and not committed. Only subtitle files are downloaded (no video). No PII is collected or transmitted. A content safety policy is injected into the system prompt. No moderation log is stored for generated outputs.
+- **Cybersecurity** — AWS credentials (IAM role, or a local `aws configure` profile) authenticate Bedrock calls — no long-lived API key stored in `.env`. Only subtitle files are downloaded (no video). No PII is collected or transmitted. A content safety policy is injected into the system prompt. No moderation log is stored for generated outputs.
 - **Readability & maintainability** — The end-to-end Mermaid pipeline diagram is among the most comprehensive in the portfolio. The step-by-step setup (6 numbered steps) is fully reproducible. Each interaction mode's latency and capability trade-offs are clearly documented.
-- **AI / ML model adequacy** — `faster-whisper tiny` is appropriate for real-time Spanish STT. XTTS v2 is state-of-the-art open-source zero-shot voice cloning. Claude Sonnet is appropriate for nuanced Spanish conversational generation with style grounding. TF-IDF RAG (top-6 quotes, threshold > 0.05) reduces hallucination by anchoring responses to real Jordi speech.
+- **AI / ML model adequacy** — `faster-whisper tiny` is appropriate for real-time Spanish STT. XTTS v2 is state-of-the-art open-source zero-shot voice cloning. Amazon Nova is appropriate for nuanced Spanish conversational generation with style grounding. TF-IDF RAG (top-6 quotes, threshold > 0.05) reduces hallucination by anchoring responses to real Jordi speech.
 - **Ethical & legal considerations** — Voice cloning and conversational impersonation of a real, living public figure raises intellectual property and likeness rights concerns. YouTube auto-generated subtitles are subject to YouTube's Terms of Service; redistribution of derived transcripts may not be permitted. Coqui TTS (XTTS v2) has been discontinued by its maintainer — the upstream dependency carries a long-term maintenance risk.
 - **Other** — The dlib ERT landmark model (trained on iBUG 300-W) is mature and stable but older than MediaPipe Holistic/FaceMesh alternatives. No conversation logging or content moderation for generated outputs is implemented.
 

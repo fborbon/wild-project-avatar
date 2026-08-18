@@ -13,6 +13,10 @@ _user_site = site.getusersitepackages()
 if _user_site not in sys.path:
     sys.path.insert(0, _user_site)
 
+_repo_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+
 # Load .env
 _env = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
 if os.path.exists(_env):
@@ -22,7 +26,7 @@ if os.path.exists(_env):
                 k, v = line.strip().split("=", 1)
                 os.environ.setdefault(k, v)
 
-import anthropic
+from bedrock_client import Anthropic
 from sklearn.metrics.pairwise import cosine_similarity
 
 DATA_DIR     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
@@ -30,7 +34,7 @@ KB_FILE      = os.path.join(DATA_DIR, "knowledge_base.pkl")
 PROFILE_FILE = os.path.join(DATA_DIR, "jordi_style_profile.json")
 FACTS_FILE   = os.path.join(DATA_DIR, "jordi_facts.json")
 
-client = anthropic.Anthropic()
+client = Anthropic()
 
 CONTENT_SAFETY = """
 POLÍTICA DE CONTENIDO (obligatoria, sin excepciones):

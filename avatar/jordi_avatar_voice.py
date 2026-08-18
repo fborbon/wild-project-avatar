@@ -2,7 +2,7 @@
 Jordi Wild animated voice avatar — lightweight version.
 - Whisper tiny  → fast transcription (~2s on CPU)
 - edge-tts      → fast Spanish TTS (~0.5s, needs internet)
-- Claude API    → Jordi's brain
+- Amazon Nova (AWS Bedrock) → Jordi's brain
 - pygame        → animated face window
 
 Controls:
@@ -38,7 +38,11 @@ if os.path.exists(_env):
                 k, v = _l.strip().split("=", 1)
                 os.environ.setdefault(k, v)
 
-import anthropic
+_repo_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+
+from bedrock_client import Anthropic
 import edge_tts
 from faster_whisper import WhisperModel
 
@@ -179,7 +183,7 @@ class JordiAvatar:
         self._last_frame_t   = time.time()
 
         self.tts_mode = "edge"   # overridden by main() from --tts arg
-        self.claude   = anthropic.Anthropic()
+        self.claude   = Anthropic()
         facts = load_facts()
         self.system = (facts + "\n\n" if facts else "") + build_system_prompt(load_profile(), topic)
         self.whisper = None

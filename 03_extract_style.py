@@ -5,7 +5,7 @@ Since we don't have diarization yet, this uses Claude to:
   2. Extract characteristic phrases, questions, reactions, and patterns.
 Output: ./data/jordi_style_profile.json  and  ./data/jordi_lines.txt
 
-Requires: ANTHROPIC_API_KEY env var
+Requires: AWS credentials with bedrock:InvokeModel (see bedrock_client.py)
 """
 
 import os
@@ -13,7 +13,7 @@ import re
 import json
 import glob
 import random
-import anthropic
+from bedrock_client import Anthropic
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,7 +24,7 @@ SAMPLE_SIZE = 5          # episodes to analyze (increase once confirmed working)
 CHUNK_CHARS = 6000       # characters per API call
 
 os.makedirs(OUT_DIR, exist_ok=True)
-client = anthropic.Anthropic()
+client = Anthropic()
 
 
 DIARIZE_PROMPT = """\
